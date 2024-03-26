@@ -3,8 +3,17 @@ syntax = "proto3";
 package proto;
 option go_package = "./;proto";
 
+
+message SubOption{
+  int32 QoS = 1;
+  bool NoLocal = 2;
+  bool RetainAsPublished = 3;
+  bool Share = 4;
+  string ShareName = 5;
+}
+
 message TopicClientsID{
-  map<string, int32> Clients = 1;
+  map<string, SubOption> Clients = 1;
 }
 
 message TopicSubTree{
@@ -19,18 +28,13 @@ message TreeNode{
   map<string, TreeNode> ChildNode = 4; // child tree
 }
 
-message SubInfo{
-  bool Retain = 1;
-  int32 QoS = 2;
-}
-
 message SubRequest{
-  map<string, SubInfo>  Topics = 1;
+  map<string, SubOption>  Topics = 1;
   string ClientID = 2;
 }
 
 message SubResponse{
-  map<string, int32>  Topics = 1;
+  map<string, SubOption>  Topics = 1;
 }
 
 message UnSubRequest{

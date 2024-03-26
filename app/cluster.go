@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"github.com/BAN1ce/skyTree/logger"
+	"github.com/BAN1ce/Tree/logger"
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
 	"github.com/lni/dragonboat/v3/statemachine"

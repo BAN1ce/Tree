@@ -55,10 +55,18 @@ type MatchTopicRequest struct {
 }
 
 type ClientInfo struct {
+	*proto.SubOption
 	ClientID    string
-	QoS         int32
 	NodeAddress string
 }
 type MatchTopicResponse struct {
 	Client []*ClientInfo
+}
+
+type MatchSubTopicRequest struct {
+	Topic string
+}
+
+type MatchSubTopicResponse struct {
+	Topic map[string]int32
 }

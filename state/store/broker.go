@@ -2,11 +2,11 @@ package store
 
 import (
 	"errors"
+	"github.com/BAN1ce/Tree/logger"
 	"github.com/BAN1ce/Tree/pkg"
 	"github.com/BAN1ce/Tree/pkg/util"
 	"github.com/BAN1ce/Tree/proto"
 	"github.com/BAN1ce/Tree/state/api"
-	"github.com/BAN1ce/skyTree/logger"
 	"github.com/lni/dragonboat/v3/statemachine"
 	"go.uber.org/zap"
 	proto2 "google.golang.org/protobuf/proto"
@@ -55,6 +55,7 @@ func (t *State) Update(bytes []byte) (statemachine.Result, error) {
 func (t *State) Lookup(i interface{}) (interface{}, error) {
 	t.mux.RLock()
 	defer t.mux.RUnlock()
+
 	switch req := i.(type) {
 	case *api.MatchTopicRequest:
 		return t.MatchTopic(req), nil
@@ -113,16 +114,23 @@ func (t *State) Close() error {
 }
 
 func (t *State) HandleSubRequest(req *proto.SubRequest) (response []byte, err error) {
-	for topic, info := range req.GetTopics() {
+	t.mux.Lock()
+	defer t.mux.Unlock()
+
+	for topic, subOption := range req.GetTopics() {
+		clientID := req.ClientID
 		if util.HasWildcard(topic) {
 			panic("implement me")
 		}
+		if subOption.Share {
+			clientID = subOption.ShareName
+		}
 		if clients, ok := t.state.Hash[topic]; ok {
-			clients.Clients[req.ClientID] = info.QoS
+			clients.Clients[clientID] = subOption
 		} else {
 			t.state.Hash[topic] = &proto.TopicClientsID{
-				Clients: map[string]int32{
-					req.GetClientID(): info.QoS,
+				Clients: map[string]*proto.SubOption{
+					clientID: subOption,
 				},
 			}
 		}
@@ -132,6 +140,9 @@ func (t *State) HandleSubRequest(req *proto.SubRequest) (response []byte, err er
 }
 
 func (t *State) HandleUnSubRequest(req *proto.UnSubRequest) (response []byte, err error) {
+	t.mux.Lock()
+	defer t.mux.Unlock()
+
 	for _, topic := range req.GetTopics() {
 		if util.HasWildcard(topic) {
 			panic("implement me")
@@ -148,6 +159,9 @@ func (t *State) HandleUnSubRequest(req *proto.UnSubRequest) (response []byte, er
 }
 
 func (t *State) MatchTopic(req *api.MatchTopicRequest) *api.MatchTopicResponse {
+	t.mux.RLock()
+	defer t.mux.RUnlock()
+
 	var (
 		response api.MatchTopicResponse
 	)
@@ -155,17 +169,47 @@ func (t *State) MatchTopic(req *api.MatchTopicRequest) *api.MatchTopicResponse {
 		panic("implement me")
 	}
 	if clients, ok := t.state.Hash[req.Topic]; ok {
-		for clientID, qos := range clients.Clients {
+		for clientID, subOption := range clients.Clients {
 			response.Client = append(response.Client, &api.ClientInfo{
-				ClientID: clientID,
-				QoS:      qos,
+				ClientID:  clientID,
+				SubOption: subOption,
 			})
 		}
 	}
 	return &response
 }
 
+func (t *State) MatchSubTopics(req *api.MatchSubTopicRequest) *api.MatchSubTopicResponse {
+	t.mux.RLock()
+	defer t.mux.RUnlock()
+
+	var (
+		response = api.MatchSubTopicResponse{
+			Topic: make(map[string]int32),
+		}
+	)
+	if clients, ok := t.state.Hash[req.Topic]; ok {
+		qos := int32(0)
+		for _, subOption := range clients.Clients {
+			if subOption.Share {
+				response.Topic[subOption.ShareName] = 1
+				continue
+			}
+			if subOption.QoS > qos {
+				qos = subOption.QoS
+			}
+		}
+		response.Topic[req.Topic] = qos
+	}
+	// TODO: implement wildcard
+	return &response
+
+}
+
 func (t *State) HandlePutKeyRequest(req *proto.PutKeyRequest) (response []byte, err error) {
+	t.mux.Lock()
+	defer t.mux.Unlock()
+
 	var (
 		resp proto.PutKeyResponse
 	)
@@ -179,6 +223,9 @@ func (t *State) HandlePutKeyRequest(req *proto.PutKeyRequest) (response []byte, 
 }
 
 func (t *State) HandleDeleteKeyRequest(req *proto.DeleteKeyRequest) (response []byte, err error) {
+	t.mux.Lock()
+	defer t.mux.Unlock()
+
 	var (
 		resp proto.DeleteKeyResponse
 	)
@@ -192,6 +239,9 @@ func (t *State) HandleDeleteKeyRequest(req *proto.DeleteKeyRequest) (response []
 }
 
 func (t *State) HandlePutKeysRequest(req *proto.PutKeysRequest) (response []byte, err error) {
+	t.mux.Lock()
+	defer t.mux.Unlock()
+
 	var (
 		resp   = proto.PutKeysResponse{}
 		tmpErr error
@@ -252,7 +302,11 @@ func (t *Node) PutKey(key, value string) error {
 		if !found {
 			child = NewNode()
 			child.Key = k
-			child.FullKey = node.FullKey + "/" + k
+			if node.FullKey == "" {
+				child.FullKey = k
+			} else {
+				child.FullKey = node.FullKey + "/" + k
+			}
 			node.ChildNode[k] = child
 		}
 		node = child
@@ -277,8 +331,8 @@ func (t *Node) ReadKey(key string) (string, bool, error) {
 		}
 		node = child
 	}
-
-	return node.Value, true, nil
+	value := node.Value
+	return value, true, nil
 }
 
 // DeleteKey deletes a key-value pair from the prefix tree.go.
@@ -292,7 +346,7 @@ func (t *Node) DeleteKey(key string) error {
 	for _, k := range keys {
 		child, found := node.ChildNode[k]
 		if !found {
-			logger.Logger.Info("key not found", zap.String("key", key))
+			logger.Logger.Info("sub tree delete key not found", zap.String("key", key))
 			return nil
 		}
 		parent, node = node, child

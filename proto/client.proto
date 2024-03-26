@@ -3,11 +3,6 @@ syntax = "proto3";
 package proto;
 option go_package = "./;proto";
 
-message Client{
-  string  ID = 1;
-  Node Root = 2;
-}
-
 message Node{
   string Key = 1; // topic section
   string FullKey = 2; // full topic
