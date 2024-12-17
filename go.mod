@@ -1,6 +1,6 @@
 module github.com/BAN1ce/Tree
 
-go 1.20
+go 1.22
 
 require (
 	github.com/lni/dragonboat/v3 v3.3.7
@@ -43,10 +43,10 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/goleak v1.2.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.15.0 // indirect
+	golang.org/x/crypto v0.19.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
-	golang.org/x/net v0.18.0 // indirect
+	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/sync v0.5.0 // indirect
-	golang.org/x/sys v0.15.0 // indirect
+	golang.org/x/sys v0.18.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )

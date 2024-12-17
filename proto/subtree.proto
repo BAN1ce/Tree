@@ -9,11 +9,12 @@ message SubOption{
   bool NoLocal = 2;
   bool RetainAsPublished = 3;
   bool Share = 4;
-  string ShareName = 5;
+  string ShareGroup = 5;
+  string Topic = 6;
 }
 
 message TopicClientsID{
-  map<string, SubOption> Clients = 1;
+  map<string, SubOption> Clients = 1; // key is clientID
 }
 
 message TopicSubTree{
@@ -24,13 +25,15 @@ message TopicSubTree{
 message TreeNode{
   string TopicSection = 1; // topic section
   string Topic = 2; // full topic
-  map<string, int32> Clients = 3; // sub clients, key is clientID
+  map<string, SubOption> Clients = 3; // sub clients, key is clientID
   map<string, TreeNode> ChildNode = 4; // child tree
 }
 
 message SubRequest{
   map<string, SubOption>  Topics = 1;
   string ClientID = 2;
+  bool Share = 3;
+  string ShareGroup = 4;
 }
 
 message SubResponse{
@@ -40,8 +43,38 @@ message SubResponse{
 message UnSubRequest{
   repeated string  Topics = 1;
   string ClientID = 2;
+  bool Share = 3;
+  string ShareGroup = 4;
 }
 
 message UnSubResponse{
   map<string, int32> Topics = 1;
+}
+
+
+//-----------------share topic-----------------
+
+message ShareGroup{
+  string GroupName = 1;
+  map<string, SubOption> Client = 2; // key is clientID, value is subOption
+  string Topic = 3;
+}
+
+message ShareTopicTopicGroup{
+  string Topic = 1;
+  map<string, ShareGroup> ShareGroups = 2; // key is share group name
+}
+
+
+message ShareTopicSubTree{
+  map<string, ShareTopicTopicGroup>  Hash = 1; // key is topic
+  ShareTreeNode TreeRoot = 2;
+
+}
+
+message ShareTreeNode{
+  string TopicSection = 1; // topic section
+  string Topic = 2; // full topic
+  map<string, ShareGroup>  TopicGroup = 3; // sub clients, key is share group name, value is share group
+  map<string, ShareTreeNode> ChildNode = 4; // child tree
 }

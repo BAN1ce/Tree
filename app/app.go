@@ -3,10 +3,14 @@ package app
 import (
 	"context"
 	"errors"
+	"github.com/BAN1ce/Tree/inner/api"
+	"github.com/BAN1ce/Tree/inner/api/request"
+	"github.com/BAN1ce/Tree/inner/core"
+	"github.com/BAN1ce/Tree/inner/server"
 	"github.com/BAN1ce/Tree/logger"
 	"github.com/BAN1ce/Tree/pkg"
 	"github.com/BAN1ce/Tree/proto"
-	"github.com/BAN1ce/Tree/state/api"
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	proto2 "google.golang.org/protobuf/proto"
 	"sync"
@@ -17,20 +21,33 @@ type App struct {
 	mux          sync.RWMutex
 	topicCluster *Cluster
 	writeTimeout time.Duration
+	gin          *gin.Engine
+	State        *core.Core
 }
 
 func NewApp() *App {
-	return &App{}
+	tmp := &App{
+		State: core.NewState(),
+	}
+	tmp.Run()
+	return tmp
 }
 
-func (a *App) StartTopicCluster(ctx context.Context, option ...Option) error {
+func (app *App) Run() {
+	if app.gin == nil {
+		app.gin = gin.Default()
+	}
+	server.Route(app.gin, app.State)
+}
+
+func (app *App) StartTopicCluster(ctx context.Context, option ...Option) error {
 	//option = append(option,cluster.WithStateMachine(store.NewState()))
 	var (
 		topicCluster = NewCluster(option...)
 	)
-	a.mux.Lock()
-	defer a.mux.Unlock()
-	a.topicCluster = topicCluster
+	app.mux.Lock()
+	defer app.mux.Unlock()
+	app.topicCluster = topicCluster
 	go func() {
 		if err := topicCluster.Start(ctx); err != nil {
 			logger.Logger.Fatal("store cluster start failed", zap.Error(err))
@@ -39,12 +56,12 @@ func (a *App) StartTopicCluster(ctx context.Context, option ...Option) error {
 	return nil
 }
 
-func (a *App) Subscribe(ctx context.Context, request *proto.SubRequest) (rsp *proto.SubResponse, err error) {
+func (app *App) Subscribe(ctx context.Context, request *proto.SubRequest) (rsp *proto.SubResponse, err error) {
 	data, err := api.EncodeRequestWriteCommand(request)
 	if err != nil {
 		return nil, err
 	}
-	if result, err := a.topicCluster.Write(ctx, data); err != nil {
+	if result, err := app.topicCluster.Write(ctx, data); err != nil {
 		return nil, err
 	} else {
 		var rsp proto.SubResponse
@@ -55,7 +72,7 @@ func (a *App) Subscribe(ctx context.Context, request *proto.SubRequest) (rsp *pr
 	}
 }
 
-func (a *App) UnSubscribe(ctx context.Context, request *proto.UnSubRequest) (rsp *proto.UnSubResponse, err error) {
+func (app *App) UnSubscribe(ctx context.Context, request *proto.UnSubRequest) (rsp *proto.UnSubResponse, err error) {
 	var (
 		data []byte
 	)
@@ -63,7 +80,7 @@ func (a *App) UnSubscribe(ctx context.Context, request *proto.UnSubRequest) (rsp
 	if err != nil {
 		return nil, err
 	}
-	if result, err := a.topicCluster.Write(ctx, data); err != nil {
+	if result, err := app.topicCluster.Write(ctx, data); err != nil {
 		return nil, err
 	} else {
 		var rsp proto.UnSubResponse
@@ -74,7 +91,7 @@ func (a *App) UnSubscribe(ctx context.Context, request *proto.UnSubRequest) (rsp
 	}
 }
 
-func (a *App) PutKey(ctx context.Context, key, value string) error {
+func (app *App) PutKey(ctx context.Context, key, value string) error {
 	var (
 		req = &proto.PutKeyRequest{
 			Key:   key,
@@ -86,7 +103,7 @@ func (a *App) PutKey(ctx context.Context, key, value string) error {
 		return err
 	}
 	// FIXME ctx
-	if result, err := a.topicCluster.Write(ctx, data); err != nil {
+	if result, err := app.topicCluster.Write(ctx, data); err != nil {
 		return err
 	} else {
 		var rsp proto.PutKeyResponse
@@ -101,24 +118,24 @@ func (a *App) PutKey(ctx context.Context, key, value string) error {
 
 }
 
-func (a *App) ReadKey(ctx context.Context, key string) (value string, exists bool, err error) {
+func (app *App) ReadKey(ctx context.Context, key string) (value string, exists bool, err error) {
 	var (
-		req = &api.ReadKeyRequest{
+		req = &request.ReadKeyRequest{
 			Key: key,
 		}
 		result interface{}
 	)
-	if result, err = a.topicCluster.Read(ctx, req); err != nil {
+	if result, err = app.topicCluster.Read(ctx, req); err != nil {
 		return
 	}
-	if rsp, ok := result.(*api.ReadKeyResponse); ok {
+	if rsp, ok := result.(*request.ReadKeyResponse); ok {
 		return rsp.Value, rsp.Exists, nil
 	}
 	err = pkg.ErrInvalidReadResponse
 	return
 }
 
-func (a *App) DeleteKey(ctx context.Context, key string) error {
+func (app *App) DeleteKey(ctx context.Context, key string) error {
 	var (
 		req = &proto.DeleteKeyRequest{
 			Key: key,
@@ -128,7 +145,7 @@ func (a *App) DeleteKey(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	if result, err := a.topicCluster.Write(ctx, data); err != nil {
+	if result, err := app.topicCluster.Write(ctx, data); err != nil {
 		return err
 	} else {
 		var rsp proto.DeleteKeyResponse
@@ -142,33 +159,22 @@ func (a *App) DeleteKey(ctx context.Context, key string) error {
 	}
 }
 
-func (a *App) ReadPrefixKey(ctx context.Context, prefix string) (value map[string]string, err error) {
+func (app *App) ReadPrefixKey(ctx context.Context, prefix string) (value map[string]string, err error) {
 	var (
-		req = &api.ReadPrefixKeyRequest{
+		req = &request.ReadPrefixKeyRequest{
 			PrefixKey: prefix,
 		}
 		result interface{}
 	)
-	if result, err = a.topicCluster.Read(ctx, req); err != nil {
+	if result, err = app.topicCluster.Read(ctx, req); err != nil {
 		return
 	}
-	if rsp, ok := result.(*api.ReadPrefixKeyResponse); ok {
+	if rsp, ok := result.(*request.ReadPrefixKeyResponse); ok {
 		return rsp.Value, nil
 	}
 	return nil, pkg.ErrInvalidReadResponse
 }
 
-func (a *App) MatchTopic(ctx context.Context, req *api.MatchTopicRequest) (*api.MatchTopicResponse, error) {
-	result, err := a.topicCluster.Read(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if rsp, ok := result.(*api.MatchTopicResponse); ok {
-		return rsp, nil
-	}
-	return nil, pkg.ErrInvalidReadResponse
-}
-
-func (a *App) getWriteCtx() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.TODO(), a.writeTimeout)
+func (app *App) getWriteCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.TODO(), app.writeTimeout)
 }

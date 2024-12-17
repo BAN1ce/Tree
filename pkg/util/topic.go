@@ -30,3 +30,30 @@ func subQosMoreThan0(topics map[string]int32) bool {
 	}
 	return false
 }
+
+func GenerateTopics(levels int, base []string, wildcards []string) []string {
+	var result []string
+	var generate func(current []string, depth int, hasHash bool)
+
+	generate = func(current []string, depth int, hasHash bool) {
+		if depth == levels {
+			result = append(result, "/"+strings.Join(current, "/"))
+			return
+		}
+		for _, b := range base {
+			generate(append(current, b), depth+1, hasHash)
+		}
+		for _, w := range wildcards {
+			if w == "#" {
+				if !hasHash && depth == levels-1 {
+					generate(append(current, w), depth+1, true)
+				}
+			} else {
+				generate(append(current, w), depth+1, hasHash)
+			}
+		}
+	}
+
+	generate([]string{}, 0, false)
+	return result
+}

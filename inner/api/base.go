@@ -49,24 +49,3 @@ func EncodeRequestWriteCommand(c interface{}) (command []byte, err error) {
 	}
 	return
 }
-
-type MatchTopicRequest struct {
-	Topic string
-}
-
-type ClientInfo struct {
-	*proto.SubOption
-	ClientID    string
-	NodeAddress string
-}
-type MatchTopicResponse struct {
-	Client []*ClientInfo
-}
-
-type MatchSubTopicRequest struct {
-	Topic string
-}
-
-type MatchSubTopicResponse struct {
-	Topic map[string]int32
-}
